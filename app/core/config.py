@@ -13,11 +13,19 @@ class Settings(BaseSettings):
     # Spotify Configuration
     SPOTIFY_CLIENT_ID: str = os.getenv("SPOTIFY_CLIENT_ID", "")
     SPOTIFY_CLIENT_SECRET: str = os.getenv("SPOTIFY_CLIENT_SECRET", "")
-    REDIRECT_URI: str = os.getenv("REDIRECT_URI", "http://localhost:5000/callback")
+    REDIRECT_URI: str = os.getenv("REDIRECT_URI", "http://127.0.0.1:8000/api/v1/auth/callback")
     FRONTEND_URI: str = os.getenv("FRONTEND_URI", "http://localhost:5173")
+    SPOTIFY_SCOPE: str = os.getenv("SPOTIFY_SCOPE", "user-library-read playlist-read-private")
+    
+    # Whitelisted final redirect URIs for clients after successful login
+    # Stored as a comma-separated string in .env, e.g., "http://localhost:5173,https://myotherapp.com"
+    ALLOWED_FINAL_REDIRECT_URIS_STR: str = os.getenv("ALLOWED_FINAL_REDIRECT_URIS", "http://localhost:5173")
+    ALLOWED_FINAL_REDIRECT_URIS: List[str] = [uri.strip() for uri in ALLOWED_FINAL_REDIRECT_URIS_STR.split(',')]
+    
+    DEFAULT_FINAL_REDIRECT_URI: str = os.getenv("DEFAULT_FINAL_REDIRECT_URI", FRONTEND_URI) # Use FRONTEND_URI as default
     
     # Redis Configuration
-    REDIS_HOST: str = os.getenv("REDIS_HOST", "localhost")
+    REDIS_HOST: str = os.getenv("REDIS_HOST", "127.0.0.1")
     REDIS_PORT: int = int(os.getenv("REDIS_PORT", "6379"))
     REDIS_DB: int = int(os.getenv("REDIS_DB", "0"))
     REDIS_PASSWORD: str = os.getenv("REDIS_PASSWORD", "")
