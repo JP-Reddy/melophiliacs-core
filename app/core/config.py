@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     
     # Session Configuration
     SESSION_TIMEOUT: int = int(os.getenv("SESSION_TIMEOUT", "3600"))
+    SAVED_TRACKS_CACHE_TTL: int = int(os.getenv("SAVED_TRACKS_CACHE_TTL", "3600"))
     
     # CORS Configuration
     CORS_ORIGINS: List[str] = [
