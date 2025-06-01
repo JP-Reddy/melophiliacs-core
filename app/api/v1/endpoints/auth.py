@@ -65,18 +65,6 @@ async def callback(request: Request, response: Response, code: str, state: str, 
     # 1. Retrieve and parse the state cookie
     stored_state_from_cookie = request.cookies.get("spotify_oauth_state")
 
-    # Delete the state cookie to prevent reuse
-    response.delete_cookie(
-        "spotify_oauth_state",
-        path="/",             # Match path from set_cookie
-        secure=settings.API_ENV != "development",       
-        httponly=True,      # Match httponly flag
-        samesite="lax"      # Match samesite flag
-    )
-
-    if not stored_state_from_cookie:
-        raise HTTPException(status_code=403, detail="State cookie not found. Possible CSRF attempt or cookie issue.")
-
     try:
         state_cookie_payload = json.loads(stored_state_from_cookie)
         csrf_nonce = state_cookie_payload.get("nonce")
@@ -142,8 +130,16 @@ async def callback(request: Request, response: Response, code: str, state: str, 
             )
 
             # 5. Redirect to the final redirect URI
-            return RedirectResponse(url=target_final_redirect_uri)
-        
+            response = RedirectResponse(url=target_final_redirect_uri)
+            response.delete_cookie(
+                "spotify_oauth_state",
+                path="/",             # Match path from set_cookie
+                secure=settings.API_ENV != "development",       
+                httponly=True,      
+                samesite="lax"      
+            )
+
+            return response
     except httpx.RequestError as exc:
         print(f"HTTP request error: {exc}")
         raise HTTPException(status_code=502, detail="Error communicating with Spotify")
