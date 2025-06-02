@@ -14,7 +14,7 @@ from fastapi import Depends
 router = APIRouter()
 
 @router.get("/login")
-async def login(response: Response, request: Request, final_redirect_uri: str = None):
+async def login(request: Request, final_redirect_uri: str = None):
     """Initialize Spotify login flow"""
     
     scope = settings.SPOTIFY_SCOPE
@@ -45,10 +45,10 @@ async def login(response: Response, request: Request, final_redirect_uri: str = 
     # 3. Construct the Spotify OAuth URL (state parameter is the CSRF nonce)
     auth_url = f"{settings.AUTH_URL}?client_id={settings.SPOTIFY_CLIENT_ID}&response_type=code&redirect_uri={settings.REDIRECT_URI}&scope={scope}&state={csrf_nonce}"
 
-    response = RedirectResponse(url=auth_url)
+    redirect_response = RedirectResponse(url=auth_url)
     
     # 4. Store state in a cookie before returning the auth_url
-    response.set_cookie(
+    redirect_response.set_cookie(
         key="spotify_oauth_state",
         value=state_cookie_payload,
         httponly=True,
@@ -58,10 +58,10 @@ async def login(response: Response, request: Request, final_redirect_uri: str = 
         secure=settings.API_ENV != "development"
     )
 
-    return response
+    return redirect_response
 
 @router.get("/callback")
-async def callback(request: Request, response: Response, code: str, state: str, error: str = None):
+async def callback(request: Request, code: str, state: str, error: str = None):
     """Handle Spotify OAuth callback"""
 
     if error:
@@ -126,11 +126,10 @@ async def callback(request: Request, response: Response, code: str, state: str, 
                 print(f"Failed to set session data for app_session_token: {app_session_token}")
                 raise HTTPException(status_code=500, detail="Could not save session data")
 
-
-            response = RedirectResponse(url=target_final_redirect_uri)
+            redirect_response = RedirectResponse(url=target_final_redirect_uri)
 
             # 4. Set the app_session_token cookie
-            response.set_cookie(
+            redirect_response.set_cookie(
                 key = "app_session_token",
                 value = app_session_token,
                 httponly = True,
@@ -139,7 +138,8 @@ async def callback(request: Request, response: Response, code: str, state: str, 
                 max_age = settings.SESSION_TIMEOUT,
                 path = "/"
             )
-            response.delete_cookie(
+
+            redirect_response.delete_cookie(
                 "spotify_oauth_state",
                 path="/",             # Match path from set_cookie
                 secure=settings.API_ENV != "development",       
@@ -148,7 +148,7 @@ async def callback(request: Request, response: Response, code: str, state: str, 
             )
 
             # 5. Redirect to the final redirect URI
-            return response
+            return redirect_response
     except httpx.RequestError as exc:
         print(f"HTTP request error: {exc}")
         raise HTTPException(status_code=502, detail="Error communicating with Spotify")
