@@ -6,6 +6,10 @@ from app.core.config import settings
 from app.core.redis import set_session_data
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response, JSONResponse, RedirectResponse
+from app.core.auth import get_current_active_session
+from app.core.redis import delete_session_data
+from typing import Dict
+from fastapi import Depends
 
 router = APIRouter()
 
@@ -38,19 +42,23 @@ async def login(response: Response, request: Request, final_redirect_uri: str = 
         "final_redirect_uri": target_final_redirect_uri
     })
 
-    # 3. Store state in a cookie before returning the auth_url
+    # 3. Construct the Spotify OAuth URL (state parameter is the CSRF nonce)
+    auth_url = f"{settings.AUTH_URL}?client_id={settings.SPOTIFY_CLIENT_ID}&response_type=code&redirect_uri={settings.REDIRECT_URI}&scope={scope}&state={csrf_nonce}"
+
+    response = RedirectResponse(url=auth_url)
+    
+    # 4. Store state in a cookie before returning the auth_url
     response.set_cookie(
         key="spotify_oauth_state",
         value=state_cookie_payload,
         httponly=True,
         max_age=300, # 5 minutes
         samesite="lax",
+        path="/",
         secure=settings.API_ENV != "development"
     )
 
-    # 4. Construct the Spotify OAuth URL (state parameter is the CSRF nonce)
-    auth_url = f"{settings.AUTH_URL}?client_id={settings.SPOTIFY_CLIENT_ID}&response_type=code&redirect_uri={settings.REDIRECT_URI}&scope={scope}&state={csrf_nonce}"
-    return {"auth_url": auth_url}
+    return response
 
 @router.get("/callback")
 async def callback(request: Request, response: Response, code: str, state: str, error: str = None):
@@ -148,3 +156,36 @@ async def callback(request: Request, response: Response, code: str, state: str, 
     except Exception as e:
         print(f"Unexpected error: {e}")
         raise HTTPException(status_code=500, detail="Could not exchange code for access token")
+
+@router.get("/me", response_model=Dict[str, str])
+async def read_users_me(current_session: dict = Depends(get_current_active_session)):
+    """Fetch current authenticated user's session status."""
+    return {"status": "authenticated", "app_session_token_suffix": current_session.get("app_session_token", "")[-4:]}
+
+@router.post("/logout") 
+async def logout_user(response: Response, current_session: dict = Depends(get_current_active_session)):
+    """Logout user by deleting session from Redis and clearing the cookie."""
+    app_session_token = current_session.get("app_session_token")
+    
+    if app_session_token:
+        deleted_count = delete_session_data(app_session_token)
+        if deleted_count > 0:
+            print(f"Session {app_session_token[:4]}...{app_session_token[-4:]} deleted from Redis.")
+        else:
+            print(f"Warning: Logout attempt for session {app_session_token[:4]}...{app_session_token[-4:]}, but no session found in Redis to delete.")
+    else:
+        # This case should ideally not be reached if get_current_active_session works correctly
+        print("Warning: app_session_token not found in current_session during logout.")
+
+    response = JSONResponse(content={"message": "Logout successful"}, status_code=200)
+
+    # Clear the app_session_token cookie from the browser
+    response.delete_cookie(
+        key="app_session_token",
+        path="/", 
+        secure=settings.API_ENV != "development", 
+        httponly=True, 
+        samesite="lax" 
+    )
+
+    return response

@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     SPOTIFY_CLIENT_ID: str = os.getenv("SPOTIFY_CLIENT_ID", "")
     SPOTIFY_CLIENT_SECRET: str = os.getenv("SPOTIFY_CLIENT_SECRET", "")
     REDIRECT_URI: str = os.getenv("REDIRECT_URI", "http://127.0.0.1:8000/api/v1/auth/callback")
-    FRONTEND_URI: str = os.getenv("FRONTEND_URI", "http://localhost:5173")
+    FRONTEND_URI: str = os.getenv("FRONTEND_URI", "http://localhost:5173/dashboard")
     SPOTIFY_SCOPE: str = os.getenv("SPOTIFY_SCOPE", "user-library-read playlist-read-private")
     
     # Whitelisted final redirect URIs for clients after successful login

@@ -137,3 +137,14 @@ def delete_top_albums_cache(app_session_token: str):
     redis_client = get_redis()
     redis_client.delete(f"top_albums:{app_session_token}")
     return True 
+
+def delete_session_data(app_session_token: str):
+    """Delete session data from Redis"""
+    if not app_session_token:
+        return False
+    redis_client = get_redis()
+    redis_client.delete(f"session:{app_session_token}")
+    redis_client.delete(f"user_tracks:{app_session_token}")
+    redis_client.delete(f"top_artists:{app_session_token}")
+    redis_client.delete(f"top_albums:{app_session_token}")
+    return True 
