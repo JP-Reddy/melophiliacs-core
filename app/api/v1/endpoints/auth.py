@@ -42,6 +42,7 @@ async def login(request: Request, final_redirect_uri: str = None):
         "final_redirect_uri": target_final_redirect_uri
     })
 
+    print(f"Redirect uri: {settings.REDIRECT_URI}")
     # 3. Construct the Spotify OAuth URL (state parameter is the CSRF nonce)
     auth_url = f"{settings.AUTH_URL}?client_id={settings.SPOTIFY_CLIENT_ID}&response_type=code&redirect_uri={settings.REDIRECT_URI}&scope={scope}&state={csrf_nonce}"
 
@@ -74,6 +75,7 @@ async def callback(request: Request, code: str, state: str, error: str = None):
     stored_state_from_cookie = request.cookies.get("spotify_oauth_state")
 
     try:
+        print(f"stored_state_from_cookie: {stored_state_from_cookie}")
         state_cookie_payload = json.loads(stored_state_from_cookie)
         csrf_nonce = state_cookie_payload.get("nonce")
         target_final_redirect_uri = state_cookie_payload.get("final_redirect_uri")
