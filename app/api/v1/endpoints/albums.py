@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException, Depends
 from typing import List, Dict, Any, Tuple
 import httpx
+import json
 from app.core.config import settings
 from app.core.auth import get_current_active_session
 from app.utils.spotify_utils import fetch_all_liked_tracks
@@ -105,8 +106,14 @@ async def get_top_albums_from_liked_songs(
         
         return top_n_albums_data
 
+    except httpx.HTTPStatusError as exc:
+        try:
+            error_detail = exc.response.json().get("error", {}).get("message", "Error communicating with Spotify.")
+        except json.JSONDecodeError:
+            error_detail = exc.response.text or "Error communicating with Spotify."
+        raise HTTPException(status_code=exc.response.status_code, detail=error_detail)
     except HTTPException as http_exc:
         raise http_exc
     except Exception as e:
         print(f"Unexpected error in get_top_albums_from_liked_songs: {str(e)}")
-        raise HTTPException(status_code=500, detail="Error processing top albums from liked songs.")
+        raise HTTPException(status_code=500, detail="An unexpected error occurred while processing album data.")

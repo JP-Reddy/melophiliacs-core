@@ -1,8 +1,44 @@
 import httpx
 import asyncio
+import time
 from app.core.config import settings
 from app.core.redis import get_user_tracks_cache, set_user_tracks_cache
 from typing import List, Dict, Any
+from fastapi import HTTPException
+
+async def _get_with_retries(client: httpx.AsyncClient, url: str, headers: dict, params: dict):
+    """
+    Wrapper for GET requests to Spotify that handles 429 rate-limiting with retries.
+    """
+    start_time = time.time()
+    max_wait_time = 90  # seconds
+
+    while True:
+        # Check if we've exceeded the total wait time
+        if time.time() - start_time > max_wait_time:
+            raise HTTPException(
+                status_code=429, 
+                detail=f"Spotify API is still rate-limiting after {max_wait_time} seconds. Please try again later."
+            )
+
+        response = await client.get(url, headers=headers, params=params)
+
+        if response.status_code == 429:
+            retry_after = int(response.headers.get("Retry-After", "1"))
+            print(f"Spotify API rate limit hit. Retrying after {retry_after} seconds.")
+            
+            # Ensure the wait doesn't exceed our total timeout
+            if (time.time() - start_time + retry_after) > max_wait_time:
+                raise HTTPException(
+                    status_code=429,
+                    detail="Spotify API rate-limiting, and wait time exceeds the 90-second limit."
+                )
+                
+            await asyncio.sleep(retry_after)
+            continue # Retry the request
+
+        response.raise_for_status()
+        return response.json()
 
 async def fetch_all_liked_tracks(
     spotify_access_token: str, 
@@ -28,13 +64,12 @@ async def fetch_all_liked_tracks(
         headers = {"Authorization": f"Bearer {spotify_access_token}"}
         
         # 2. Make initial call to get total and first page
-        initial_response = await client.get(
+        initial_data = await _get_with_retries(
+            client,
             f"{settings.API_BASE_URL}/me/tracks",
-            headers=headers,
-            params={"limit": limit_per_request, "offset": 0}
+            headers,
+            {"limit": limit_per_request, "offset": 0}
         )
-        initial_response.raise_for_status()
-        initial_data = initial_response.json()
         
         total_from_spotify = initial_data.get("total", 0)
 
@@ -54,11 +89,13 @@ async def fetch_all_liked_tracks(
         tasks = []
         async def fetch_page(offset_val: int, page_limit: int):
             page_params = {"limit": page_limit, "offset": offset_val}
-            page_response = await client.get(
-                f"{settings.API_BASE_URL}/me/tracks", headers=headers, params=page_params
+            page_data = await _get_with_retries(
+                client,
+                f"{settings.API_BASE_URL}/me/tracks",
+                headers,
+                page_params
             )
-            page_response.raise_for_status()
-            return page_response.json().get("items", [])
+            return page_data.get("items", [])
 
         # 5. Calculate offsets for remaining pages
         offsets_to_fetch = []
@@ -69,9 +106,16 @@ async def fetch_all_liked_tracks(
         
         # 6. Fetch remaining pages concurrently
         if offsets_to_fetch:
-            for offset_val in offsets_to_fetch:
-                tasks.append(fetch_page(offset_val, limit_per_request))
-            
+            async def fetch_page(offset_val: int):
+                page_data = await _get_with_retries(
+                    client,
+                    f"{settings.API_BASE_URL}/me/tracks",
+                    headers,
+                    {"limit": limit_per_request, "offset": offset_val}
+                )
+                return page_data.get("items", [])
+
+            tasks = [fetch_page(offset) for offset in offsets_to_fetch]
             results_from_other_pages = await asyncio.gather(*tasks)
             for page_items in results_from_other_pages:
                 all_tracks_items.extend(page_items)
